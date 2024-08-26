@@ -1,32 +1,26 @@
-# Copyright 2020 InterDigital Communications, Inc.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
-import argparse
-import math
+import wandb
 import random
-import shutil
 import sys
-
+import numpy as np
+from compressai.utils.functions import  create_savepath
+from compressai.utils.parser import parse_args
+from compressai.utils.plot import plot_rate_distorsion
+from compressai.utils.state_dict_handler import complete_args, adapt_state_dict, replace_keys
+import time
 import torch
+import math
 import torch.nn as nn
 import torch.optim as optim
-
+from   compressai.training.step import train_one_epoch, valid_epoch, test_epoch, compress_with_ac
 from torch.utils.data import DataLoader
 from torchvision import transforms
-
-from compressai.datasets import ImageFolder
-from compressai.zoo import models
+from compressai.training.loss import ScalableRateDistortionLoss, DistortionLoss
+from compressai.datasets.utils import ImageFolder, TestKodakDataset
+from compressai.models import get_model
+#from compress.zoo import models
+from compressai.utils.result_list import tri_planet_22_bpp, tri_planet_22_psnr, tri_planet_23_bpp, tri_planet_23_psnr
+import os
+from collections import OrderedDict
 
 
 class RateDistortionLoss(nn.Module):

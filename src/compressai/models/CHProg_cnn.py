@@ -1,11 +1,8 @@
 import torch
 import torch.nn as nn
-from compressai.layers import GDN, conv3x3, subpel_conv3x3, Win_noShift_Attention
+from compressai.layers import GDN, conv3x3, subpel_conv3x3, Win_noShift_Attention, ChannelMask, UNet
 from utils import conv, deconv
 from compressai.ops import ste_round
-from compressai.layers.mask_layers import ChannelMask
-from compress.layers.unet import UNet
-#from .progressive_res import ProgressiveResWACNN
 from cnn import WACNN
 import math
 
