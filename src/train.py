@@ -7,6 +7,7 @@ from compressai.utils.parser import parse_args
 from compressai.utils.plot import plot_rate_distorsion
 from compressai.utils.state_dict_handler import complete_args, adapt_state_dict, replace_keys
 import time
+import shutil
 import torch
 import math
 import torch.nn as nn
@@ -23,27 +24,75 @@ import os
 from collections import OrderedDict
 
 
-class RateDistortionLoss(nn.Module):
-    """Custom rate distortion loss with a Lagrangian parameter."""
+def initialize_model_from_pretrained( checkpoint,
+                                     args,
+                                     checkpoint_enh = None):
 
-    def __init__(self, lmbda=1e-2):
-        super().__init__()
-        self.mse = nn.MSELoss()
-        self.lmbda = lmbda
+    sotto_ordered_dict = OrderedDict()
 
-    def forward(self, output, target):
-        N, _, H, W = target.size()
-        out = {}
-        num_pixels = N * H * W
+    for c in list(checkpoint.keys()):
+        if "g_s" in c: 
+            if args.multiple_decoder:
+                nuova_stringa = "g_s.0." + c[4:]
+                sotto_ordered_dict[nuova_stringa] = checkpoint[c]
+            else:
+                sotto_ordered_dict[c] = checkpoint[c]
 
-        out["bpp_loss"] = sum(
-            (torch.log(likelihoods).sum() / (-math.log(2) * num_pixels))
-            for likelihoods in output["likelihoods"].values()
-        )
-        out["mse_loss"] = self.mse(output["x_hat"], target)
-        out["loss"] = self.lmbda * 255 ** 2 * out["mse_loss"] + out["bpp_loss"]
+        elif "g_a" in c: 
+            if args.multiple_encoder:
+                nuova_stringa = "g_a.0." + c[4:]
+                sotto_ordered_dict[nuova_stringa] = checkpoint[c]
+            else:
+                sotto_ordered_dict[c] = checkpoint[c]
+        elif "cc_" in c or "lrp_" in c or "gaussian_conditional" or "entropy_bottleneck" in c: 
+            sotto_ordered_dict[c] = checkpoint[c]
+        else:
+            continue
 
-        return out
+
+    for c in list(sotto_ordered_dict.keys()):
+        if "h_scale_s" in c or "h_a" in c  or "h_mean_s" in c:
+            sotto_ordered_dict.pop(c)
+    if args.multiple_hyperprior:
+        for c in list(checkpoint.keys()):
+            if "h_mean_s" in c:
+                nuova_stringa = "h_mean_s.0." + c[9:]
+                sotto_ordered_dict[nuova_stringa] = checkpoint[c]     
+            elif "h_scale_s" in c:
+                nuova_stringa = "h_scale_s.0." + c[10:]
+                sotto_ordered_dict[nuova_stringa] = checkpoint[c]   
+
+
+    for c in list(sotto_ordered_dict.keys()):
+        if "h_a" in c:
+            sotto_ordered_dict.pop(c)
+
+
+    if checkpoint_enh is not None:
+        print("prendo anche il secondo modello enhanced")
+        for c in list(checkpoint_enh.keys()):
+            if "g_s" in c: 
+                nuova_stringa = "g_s.1." + c[4:]
+                sotto_ordered_dict[nuova_stringa] = checkpoint_enh[c]
+
+            else:
+                continue
+
+
+
+
+    return sotto_ordered_dict
+    
+
+
+def sec_to_hours(seconds):
+    a=str(seconds//3600)
+    b=str((seconds%3600)//60)
+    c=str((seconds%3600)%60)
+    d=["{} hours {} mins {} seconds".format(a, b, c)]
+    print(d[0])
+
+
 
 
 class AverageMeter:
@@ -142,34 +191,7 @@ def train_one_epoch(
             )
 
 
-def test_epoch(epoch, test_dataloader, model, criterion):
-    model.eval()
-    device = next(model.parameters()).device
 
-    loss = AverageMeter()
-    bpp_loss = AverageMeter()
-    mse_loss = AverageMeter()
-    aux_loss = AverageMeter()
-
-    with torch.no_grad():
-        for d in test_dataloader:
-            d = d.to(device)
-            out_net = model(d)
-            out_criterion = criterion(out_net, d)
-
-            aux_loss.update(model.aux_loss())
-            bpp_loss.update(out_criterion["bpp_loss"])
-            loss.update(out_criterion["loss"])
-            mse_loss.update(out_criterion["mse_loss"])
-
-    print(
-        f"Test epoch {epoch}: Average losses:"
-        f"\tLoss: {loss.avg:.3f} |"
-        f"\tMSE loss: {mse_loss.avg * 255 ** 2 / 3:.3f} |"
-        f"\tBpp loss: {bpp_loss.avg:.2f} |"
-        f"\tAux loss: {aux_loss.avg:.2f}\n"
-    )
-    return loss.avg
 
 
 def save_checkpoint(state, is_best, filename):
@@ -178,108 +200,54 @@ def save_checkpoint(state, is_best, filename):
         shutil.copyfile(filename, filename[:-8]+"_best"+filename[-8:])
 
 
-def parse_args(argv):
-    parser = argparse.ArgumentParser(description="Example training script.")
-    parser.add_argument(
-        "-m",
-        "--model",
-        default="stf",
-        choices=models.keys(),
-        help="Model architecture (default: %(default)s)",
-    )
-    parser.add_argument(
-        "-d", "--dataset", type=str, required=True, help="Training dataset"
-    )
-    parser.add_argument(
-        "-e",
-        "--epochs",
-        default=100,
-        type=int,
-        help="Number of epochs (default: %(default)s)",
-    )
-    parser.add_argument(
-        "-lr",
-        "--learning-rate",
-        default=1e-4,
-        type=float,
-        help="Learning rate (default: %(default)s)",
-    )
-    parser.add_argument(
-        "-n",
-        "--num-workers",
-        type=int,
-        default=30,
-        help="Dataloaders threads (default: %(default)s)",
-    )
-    parser.add_argument(
-        "--lambda",
-        dest="lmbda",
-        type=float,
-        default=1e-2,
-        help="Bit-rate distortion parameter (default: %(default)s)",
-    )
-    parser.add_argument(
-        "--batch-size", type=int, default=16, help="Batch size (default: %(default)s)"
-    )
-    parser.add_argument(
-        "--test-batch-size",
-        type=int,
-        default=64,
-        help="Test batch size (default: %(default)s)",
-    )
-    parser.add_argument(
-        "--aux-learning-rate",
-        default=1e-3,
-        type=float,
-        help="Auxiliary loss learning rate (default: %(default)s)",
-    )
-    parser.add_argument(
-        "--patch-size",
-        type=int,
-        nargs=2,
-        default=(256, 256),
-        help="Size of the patches to be cropped (default: %(default)s)",
-    )
-    parser.add_argument("--cuda", action="store_true", help="Use cuda")
-    parser.add_argument(
-        "--save", action="store_true", default=True, help="Save model to disk"
-    )
-    parser.add_argument(
-        "--save_path", type=str, default="ckpt/model.pth.tar", help="Where to Save model"
-    )
-    parser.add_argument(
-        "--seed", type=float, help="Set random seed for reproducibility"
-    )
-    parser.add_argument(
-        "--clip_max_norm",
-        default=1.0,
-        type=float,
-        help="gradient clipping max norm (default: %(default)s",
-    )
-    parser.add_argument("--checkpoint", type=str, help="Path to a checkpoint")
-    args = parser.parse_args(argv)
-    return args
 
 
 def main(argv):
+
     args = parse_args(argv)
     print(args)
+
+    
+
+    openimages_path = "/scratch/dataset/openimages"
+    kodak_path = "/scratch/dataset/kodak"
+    save_path = "/scratch/ResDSIC/models/"
+
+
+    dict_base_model = {"q2":"/scratch/base_devil/weights/q2/model.pth",
+                        "q5":"/scratch/base_devil/weights/q5/model.pth"}
+
+    
+    if  args.model == "multidec": 
+        wandb.init( config= args, project="ResDSIC-refine", entity="albipresta") #ddd
+    elif len(args.lmbda_list) > 2:
+        wandb.init( config= args, project="ResDSIC-3L", entity="albipresta")
+    elif args.joiner_policy == "cond":
+        wandb.init( config= args, project="ResDSIC-cond", entity="albipresta") 
+    else:
+        wandb.init( config= args, project="ResDSIC-Delta-Unet", entity="albipresta")  #dddd dddd ddddd
     if args.seed is not None:
         torch.manual_seed(args.seed)
         random.seed(args.seed)
+    
 
+    print("initialize dataset")
+    
     train_transforms = transforms.Compose(
         [transforms.RandomCrop(args.patch_size), transforms.ToTensor()]
     )
 
     test_transforms = transforms.Compose(
-        [transforms.CenterCrop(args.patch_size), transforms.ToTensor()]
+        [ transforms.ToTensor()]
     )
 
-    train_dataset = ImageFolder(args.dataset, split="train", transform=train_transforms)
-    test_dataset = ImageFolder(args.dataset, split="test", transform=test_transforms)
+    train_dataset = ImageFolder(openimages_path, split="train", transform=train_transforms, num_images=args.num_images)
+    valid_dataset = ImageFolder(openimages_path, split="test", transform=train_transforms, num_images=args.num_images_val)
+    test_dataset = TestKodakDataset(data_dir=kodak_path, transform= test_transforms)
 
-    device = "cuda" if args.cuda and torch.cuda.is_available() else "cpu"
+    filelist = test_dataset.image_path
+
+    device = "cuda" 
 
     train_dataloader = DataLoader(
         train_dataset,
@@ -289,36 +257,93 @@ def main(argv):
         pin_memory=(device == "cuda"),
     )
 
-    test_dataloader = DataLoader(
-        test_dataset,
-        batch_size=args.test_batch_size,
+    valid_dataloader = DataLoader(
+        valid_dataset,
+        batch_size=args.valid_batch_size,
         num_workers=args.num_workers,
         shuffle=False,
         pin_memory=(device == "cuda"),
     )
 
-    net = models[args.model]()
-    net = net.to(device)
+    test_dataloader = DataLoader(test_dataset, batch_size=args.test_batch_size, num_workers=args.num_workers,shuffle=False,pin_memory=(device == "cuda"),)
+
+    if args.lmbda_list == []:
+        lmbda_list = None
+    else:
+        lmbda_list = args.lmbda_list
+
+    
+    if args.checkpoint == "none":
+        net = get_model(args,device, lmbda_list)
+        net = net.to(device)
+        net.update()
+
+    else:
+        checkpoint = torch.load(save_path + "/" + args.checkpoint + "/" + args.name_model, map_location=device)
+        new_args = checkpoint["args"]
+        new_args = complete_args(new_args)
+        lmbda_list = new_args.lmbda_list
+        checkpoint_model = replace_keys(checkpoint["state_dict"], multiple_encoder=new_args.multiple_encoder)
+        net = get_model(new_args,device, lmbda_list)
+
+        net.load_state_dict(checkpoint_model,strict = True)
+
+        net.update()
+
+    if args.checkpoint_base != "none":
+        print("entro qua per il checkpoint base")
+        checkpoin_base_model = dict_base_model[args.checkpoint_base]
+        base_checkpoint = torch.load(checkpoin_base_model,map_location=device)
+        new_check = initialize_model_from_pretrained(base_checkpoint, args)
+        net.load_state_dict(new_check,strict = False)
+        net.update() 
+        if args.freeze_base:
+            net.freeze_base_net(args.multiple_hyperprior)   
+
+
 
     if args.cuda and torch.cuda.device_count() > 1:
         net = CustomDataParallel(net)
 
-    optimizer, aux_optimizer = configure_optimizers(net, args)
-    lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, "min", factor=0.3, patience=4)
-    criterion = RateDistortionLoss(lmbda=args.lmbda)
-
     last_epoch = 0
-    if args.checkpoint:  # load from previous checkpoint
-        print("Loading", args.checkpoint)
-        checkpoint = torch.load(args.checkpoint, map_location=device)
-        last_epoch = checkpoint["epoch"] + 1
-        net.load_state_dict(checkpoint["state_dict"])
 
-        optimizer.load_state_dict(checkpoint["optimizer"])
-        aux_optimizer.load_state_dict(checkpoint["aux_optimizer"])
-        lr_scheduler.load_state_dict(checkpoint["lr_scheduler"])
+    optimizer, aux_optimizer = configure_optimizers(net, args)
+    lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, "min", factor=0.3, patience=args.patience)
+    
+
+
+    criterion = ScalableRateDistortionLoss(lmbda_list=args.lmbda_list)
+    #criterion = DistortionLoss() #if args.model == "multidec" #else  ScalableRateDistortionLoss(lmbda_list=args.lmbda_list)
+    
 
     best_loss = float("inf")
+    counter = 0
+    epoch_enc = 0
+
+
+
+
+
+    list_quality = [0,10]
+    
+    
+    print("PRIMA DI COMINCIARE IL TRAINING, FACCIAMO IL PRIMO TEST INIZIALE")
+    if args.checkpoint != "none":
+        pr_list = [0,0.05,0.1,0.25,0.5,0.6,0.75,1,1.25,2,3,5,10] #ggg
+        mask_pol = "point-based-std"
+    
+        bpp_init, psnr_init,_ = compress_with_ac(net, #net 
+                                            filelist, 
+                                            device,
+                                           epoch = -10, 
+                                           pr_list =pr_list,  
+                                            mask_pol = mask_pol,
+                                            writing = None)
+    
+        print("----> ",bpp_init," ",psnr_init)
+    
+
+
     for epoch in range(last_epoch, args.epochs):
         print(f"Learning rate: {optimizer.param_groups[0]['lr']}")
         train_one_epoch(
