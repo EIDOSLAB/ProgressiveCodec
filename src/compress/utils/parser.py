@@ -1,5 +1,5 @@
 import argparse
-from compressai.models import models
+from compress.models import models
 
 
 
@@ -11,14 +11,14 @@ def parse_args(argv):
     parser.add_argument("--name_model",type=str,default = "none")
 
 
-    parser.add_argument("-cl", "--cluster", type=str, default = "hssh",choices=["hssh","nautilus"], help="Training dataset")
+    
     parser.add_argument("-m","--model",default="channel",choices=models.keys(),help="Model architecture (default: %(default)s)",)
     
     parser.add_argument("-e","--epochs",default=150,type=int,help="Number of epochs (default: %(default)s)",)
     parser.add_argument( "-lr", "--learning-rate", default=1e-4, type=float, help="Learning rate (default: %(default)s)",)
     parser.add_argument("-n","--num-workers",type=int,default=8,help="Dataloaders threads (default: %(default)s)",) #u_net_post
     #dddd
-    parser.add_argument("--u_net_post",type=int,default=2,help="Dataloaders threads (default: %(default)s)",)
+    parser.add_argument("--u_net_post",type=int,default=0,help="postprocessing network",)
     parser.add_argument("--lambda_list",dest="lmbda_list", nargs='+', type=float, default = [ 0.0055,0.04])
     parser.add_argument("--division_dimension", nargs='+', type=int, default = [320, 640])
     parser.add_argument("--inner_dimensions", nargs='+', type=int, default = [192, 192]) #ddddfffff
@@ -29,7 +29,7 @@ def parse_args(argv):
     parser.add_argument("--support_std", action="store_true", help="KD base")
     parser.add_argument("--all_scalable", action="store_true", help="KD base")
     parser.add_argument("--total_mu_rep", action="store_true", help="KD base")
-    parser.add_argument("--kd_base", action="store_true", help="KD base")
+
     parser.add_argument("--freeze_base", action="store_true", help="KD base")#dddd
     parser.add_argument("--residual_before_lrp", action="store_true", help="KD base")
 
@@ -38,7 +38,7 @@ def parse_args(argv):
 
     parser.add_argument("--N", type=int, default=192, help="N")#ddddd#ddd
     parser.add_argument("--M", type=int, default=640, help="M")
-    parser.add_argument("--patience", type=int, default=7, help="patience")#ddddddd
+    parser.add_argument("--patience", type=int, default=8, help="patience")#ddddddd
 
     parser.add_argument("--code", type=str, default = "0001", help="Batch size (default: %(default)s)")
     parser.add_argument("--num_images_val", type=int, default=816, help="Batch size (default: %(default)s)")
@@ -54,7 +54,6 @@ def parse_args(argv):
     parser.add_argument("--multiple_encoder", action="store_true", help="Use cuda")
     parser.add_argument("--multiple_hyperprior", action="store_true", help="Use cuda")
     parser.add_argument("--double_dim", action="store_true", help="Use cuda")
-    parser.add_argument("--mutual", action="store_true", help="Use cuda")
     parser.add_argument("--delta_encode", action="store_true", help="delta encoder")
 
 
@@ -62,7 +61,8 @@ def parse_args(argv):
     parser.add_argument("--milestones", nargs='+', type=float, default = [0,0.75,1.5,3,10])
 
 
-    parser.add_argument("-see","--shared_entropy_estimation", action="store_true", help="Use cuda")
+
+
     parser.add_argument("--continue_training", action="store_true", help="continue training of the checkpoint")
 
     parser.add_argument("--seed", type=float, help="Set random seed for reproducibility")

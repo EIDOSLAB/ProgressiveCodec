@@ -10,7 +10,7 @@ import wandb
 
 
 
-def plot_rate_distorsion(bpp_res, psnr_res,epoch, eest = "compression", index_list = []):
+def plot_rate_distorsion(bpp_res, psnr_res,epoch, eest = "compression"):
 
 
 

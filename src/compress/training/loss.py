@@ -94,10 +94,10 @@ class ScalableRateDistortionLoss(nn.Module):
         num_pixels = batch_size_images * H * W
 
         batch_size_recon = output["x_hat"].shape[0] # num_levels,N
-        batch_size_recon_tar = target.shape[0]
 
 
-        if batch_size_recon != 1 and batch_size_recon != batch_size_recon_tar:
+
+        if batch_size_recon != 1 and batch_size_recon != batch_size_images:
             # Copy images to match the batch size of recon_images
             target = target.unsqueeze(0)
             extend_images = target.repeat(batch_size_recon,1,1,1,1) #num_levels, BS,W,H

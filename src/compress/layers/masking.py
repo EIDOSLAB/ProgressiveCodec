@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
-from compressai.ops import LowerBound, ste_round
-from compressai.layers import conv3x3, subpel_conv3x3
+from compress.ops import LowerBound, ste_round
+from compress.layers import conv3x3, subpel_conv3x3
 
 
 

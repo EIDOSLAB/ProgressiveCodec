@@ -1,9 +1,9 @@
 import torch
 import torch.nn as nn
-from compressai.ops import ste_round
+from compress.ops import ste_round
 from .CHProg_cnn import ChannelProgresssiveWACNN
 
-from compressai.layers  import  LatentRateReduction
+from compress.layers  import  LatentRateReduction
 import time
 
 class PostRateProcessedNetwork(nn.Module):

@@ -434,8 +434,8 @@ class MaskEstractor(nn.Module):
 ########################################################################
 #################################################################
 
-from compressai.models import MeanScaleHyperprior
-from compressai.entropy_models import EntropyBottleneck,GaussianConditional
+from compress.models import MeanScaleHyperprior
+from compress.entropy_models import EntropyBottleneck,GaussianConditional
 
 
 class MaskCompressor(MeanScaleHyperprior):

@@ -7,8 +7,8 @@ from torch.nn.functional import mse_loss
 from pytorch_msssim import ms_ssim
 import torch.nn.functional as F 
 import torchvision.transforms as transforms
-from compressai.ops import compute_padding
-from compressai.utils.functions import compute_msssim, compute_psnr, AverageMeter, read_image
+from compress.ops import compute_padding
+from compress.utils.functions import compute_msssim, compute_psnr, AverageMeter, read_image
 
 def compute_psnr(a, b):
     mse = torch.mean((a - b)**2).item()
@@ -34,8 +34,7 @@ def train_one_epoch(model,
                       counter,
                       sampling_training = False,
                       list_quality = None,
-                      clip_max_norm = 1.0,
-                      video = False):
+                      clip_max_norm = 1.0):
     model.train()
     device = next(model.parameters()).device
 
@@ -44,16 +43,8 @@ def train_one_epoch(model,
     bpp_loss = AverageMeter()
     mse_loss = AverageMeter()
     bpp_scalable = AverageMeter()
-    bpp_main = AverageMeter()
     kd_enh = AverageMeter()
-    kd_base = AverageMeter()
 
-    mutual_info = AverageMeter()
-
-
-
-
-    lmbda_list = model.lmbda_list
     for i, d in enumerate(train_dataloader):
         d = d.to(device)
 
@@ -72,7 +63,7 @@ def train_one_epoch(model,
 
         out_criterion["loss"].backward()
         if aux_optimizer is not None:
-            aux_loss = model.aux_loss() if video is False else compute_aux_loss(model.aux_loss())
+            aux_loss = model.aux_loss() 
             aux_loss.backward()
             aux_optimizer.step()
 
@@ -88,15 +79,12 @@ def train_one_epoch(model,
         if "bpp_scalable" in list(out_criterion.keys()):
             bpp_scalable.update(out_criterion["bpp_scalable"].clone().detach())
 
-        #bpp_main.update(out_criterion["bpp_base"].clone().detach())
+
 
         if "kd_enh" in list(out_criterion.keys()):
             kd_enh.update(out_criterion["kd_enh"].clone().detach())
         if "kd_base" in list(out_criterion.keys()):
             kd_enh.update(out_criterion["kd_base"].clone().detach())
-        if "mutual" in list(out_criterion.keys()):
-            mutual_info.update(out_criterion["mutual"])
-
 
         wand_dict = {
             "train_batch": counter,
@@ -126,17 +114,7 @@ def train_one_epoch(model,
                 "train_batch/kd_base": out_criterion["kd_base"].clone().detach().item(),
             }
             wandb.log(wand_dict)
-        if "mutual" in list(out_criterion.keys()):
-            wand_dict = {
-                "train_batch": counter, 
-                "train_batch/mutual": out_criterion["mutual"],
-            }
-            wandb.log(wand_dict)
         counter += 1
-
-
-
-
 
         if i % 1000 == 0:
             print(
@@ -164,14 +142,6 @@ def train_one_epoch(model,
             "train/bpp_progressive":bpp_scalable.avg,
             }
         wandb.log(log_dict) 
-
-    if "mutual" in list(out_criterion.keys()):
-        log_dict = {
-            "train":epoch,
-            "train/mutual":mutual_info.avg,
-            }
-        wandb.log(log_dict) 
-
 
     return counter
 
@@ -311,8 +281,6 @@ def compress_with_ac(model,
                      pr_list = [0.05,0.01], 
                      mask_pol = None, 
                        writing = None, 
-                       base = False,
-                       
                        cheating = False,
                        customs_maps =False,
                        save_images = False):
@@ -389,17 +357,12 @@ def compress_with_ac(model,
                 size = out_dec['x_hat'].size()
                 num_pixels = size[0] * size[2] * size[3]
 
-                # calcolo lo stream del base 
-                if base is True:
-                    bpp = sum(len(s[0]) for s in data["strings"]) * 8.0 / num_pixels
-
-                else:
-                    data_string_scale = data["strings"][0] # questo è una lista
-                    bpp_scale = sum(len(s[0]) for s in data_string_scale) * 8.0 / num_pixels #ddddddd
+                data_string_scale = data["strings"][0] # questo è una lista
+                bpp_scale = sum(len(s[0]) for s in data_string_scale) * 8.0 / num_pixels #ddddddd
                         
-                    data_string_hype = data["strings"][1]
-                    bpp_hype = sum(len(s) for s in data_string_hype) * 8.0 / num_pixels
-                    bpp = bpp_hype + bpp_scale if cheating is False or j == 0 else bpp_scale
+                data_string_hype = data["strings"][1]
+                bpp_hype = sum(len(s) for s in data_string_hype) * 8.0 / num_pixels
+                bpp = bpp_hype + bpp_scale if cheating is False or j == 0 else bpp_scale
 
 
                 bpp_loss[j].update(bpp)

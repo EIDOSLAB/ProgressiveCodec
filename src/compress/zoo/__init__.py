@@ -13,7 +13,7 @@
 # limitations under the License.
 
 
-from compressai.models import SymmetricalTransFormer, WACNN
+from compress.models import SymmetricalTransFormer, WACNN
 
 from .pretrained import load_pretrained as load_state_dict
 

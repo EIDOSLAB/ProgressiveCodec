@@ -11,7 +11,7 @@ import torch.nn.functional as F
 from torch import Tensor
 
 from compressai._CXX import pmf_to_quantized_cdf as _pmf_to_quantized_cdf
-from compressai.ops import LowerBound
+from compress.ops import LowerBound
 
 
 class _EntropyCoder:
@@ -21,7 +21,7 @@ class _EntropyCoder:
         if not isinstance(method, str):
             raise ValueError(f'Invalid method type "{type(method)}"')
 
-        from compressai import available_entropy_coders
+        from compress import available_entropy_coders
 
         if method not in available_entropy_coders():
             methods = ", ".join(available_entropy_coders())
@@ -30,7 +30,7 @@ class _EntropyCoder:
             )
 
         if method == "ans":
-            from compressai import ans
+            from compress import ans
 
             encoder = ans.RansEncoder()
             decoder = ans.RansDecoder()
@@ -52,7 +52,7 @@ class _EntropyCoder:
 
 
 def default_entropy_coder():
-    from compressai import get_entropy_coder
+    from compress import get_entropy_coder
 
     return get_entropy_coder()
 

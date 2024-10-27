@@ -2,24 +2,24 @@ import wandb
 import random
 import sys
 import numpy as np
-from compressai.utils.functions import  create_savepath
-from compressai.utils.parser import parse_args
-from compressai.utils.plot import plot_rate_distorsion
-from compressai.utils.state_dict_handler import complete_args, adapt_state_dict, replace_keys
+from compress.utils.functions import  create_savepath
+from compress.utils.parser import parse_args
+from compress.utils.plot import plot_rate_distorsion
+from compress.utils.state_dict_handler import complete_args, adapt_state_dict, replace_keys
 import time
 import shutil
 import torch
 import math
 import torch.nn as nn
 import torch.optim as optim
-from   compressai.training.step import train_one_epoch, valid_epoch, test_epoch, compress_with_ac
+from   compress.training.step import train_one_epoch, valid_epoch, test_epoch, compress_with_ac
 from torch.utils.data import DataLoader
 from torchvision import transforms
-from compressai.training.loss import ScalableRateDistortionLoss, DistortionLoss
-from compressai.datasets.utils import ImageFolder, TestKodakDataset
-from compressai.models import get_model
+from compress.training.loss import ScalableRateDistortionLoss, DistortionLoss
+from compress.datasets.utils import ImageFolder, TestKodakDataset
+from compress.models import get_model
 #from compress.zoo import models
-from compressai.utils.result_list import tri_planet_22_bpp, tri_planet_22_psnr, tri_planet_23_bpp, tri_planet_23_psnr
+from compress.utils.result_list import tri_planet_22_bpp, tri_planet_22_psnr, tri_planet_23_bpp, tri_planet_23_psnr
 import os
 from collections import OrderedDict
 
@@ -155,50 +155,20 @@ def configure_optimizers(net, args):
     return optimizer, aux_optimizer
 
 
-def train_one_epoch(
-    model, criterion, train_dataloader, optimizer, aux_optimizer, epoch, clip_max_norm
-):
-    model.train()
-    device = next(model.parameters()).device
-
-    for i, d in enumerate(train_dataloader):
-        d = d.to(device)
-
-        optimizer.zero_grad()
-        aux_optimizer.zero_grad()
-
-        out_net = model(d)
-
-        out_criterion = criterion(out_net, d)
-        out_criterion["loss"].backward()
-        if clip_max_norm > 0:
-            torch.nn.utils.clip_grad_norm_(model.parameters(), clip_max_norm)
-        optimizer.step()
-
-        aux_loss = model.aux_loss()
-        aux_loss.backward()
-        aux_optimizer.step()
-
-        if i % 100 == 0:
-            print(
-                f"Train epoch {epoch}: ["
-                f"{i*len(d)}/{len(train_dataloader.dataset)}"
-                f" ({100. * i / len(train_dataloader):.0f}%)]"
-                f'\tLoss: {out_criterion["loss"].item():.3f} |'
-                f'\tMSE loss: {out_criterion["mse_loss"].item() * 255 ** 2 / 3:.3f} |'
-                f'\tBpp loss: {out_criterion["bpp_loss"].item():.2f} |'
-                f"\tAux loss: {aux_loss.item():.2f}"
-            )
 
 
 
 
+def save_checkpoint(state, is_best, last_pth,very_best):
 
-def save_checkpoint(state, is_best, filename):
-    torch.save(state, filename)
+
     if is_best:
-        shutil.copyfile(filename, filename[:-8]+"_best"+filename[-8:])
-
+        print("STIAMO SALVANDO IL VERO BEST MODEL-------------Z ",very_best)
+        torch.save(state, very_best)
+        wandb.save(very_best)
+    else:
+        torch.save(state, last_pth)
+        wandb.save(last_pth)
 
 
 
@@ -211,21 +181,16 @@ def main(argv):
 
     openimages_path = "/scratch/dataset/openimages"
     kodak_path = "/scratch/dataset/kodak"
-    save_path = "/scratch/ResDSIC/models/"
+    save_path = "/scratch/Progressive/models/"
 
 
     dict_base_model = {"q2":"/scratch/base_devil/weights/q2/model.pth",
                         "q5":"/scratch/base_devil/weights/q5/model.pth"}
 
     
-    if  args.model == "multidec": 
-        wandb.init( config= args, project="ResDSIC-refine", entity="albipresta") #ddd
-    elif len(args.lmbda_list) > 2:
-        wandb.init( config= args, project="ResDSIC-3L", entity="albipresta")
-    elif args.joiner_policy == "cond":
-        wandb.init( config= args, project="ResDSIC-cond", entity="albipresta") 
-    else:
-        wandb.init( config= args, project="ResDSIC-Delta-Unet", entity="albipresta")  #dddd dddd ddddd
+ 
+    wandb.init( config= args, project="ProgressiveCodec", entity="albipresta") #ddd
+
     if args.seed is not None:
         torch.manual_seed(args.seed)
         random.seed(args.seed)
@@ -315,13 +280,9 @@ def main(argv):
     criterion = ScalableRateDistortionLoss(lmbda_list=args.lmbda_list)
     #criterion = DistortionLoss() #if args.model == "multidec" #else  ScalableRateDistortionLoss(lmbda_list=args.lmbda_list)
     
-
     best_loss = float("inf")
     counter = 0
     epoch_enc = 0
-
-
-
 
 
     list_quality = [0,10]
@@ -343,37 +304,139 @@ def main(argv):
         print("----> ",bpp_init," ",psnr_init)
     
 
-
+    epoch_enc = 0
     for epoch in range(last_epoch, args.epochs):
-        print(f"Learning rate: {optimizer.param_groups[0]['lr']}")
-        train_one_epoch(
-            net,
-            criterion,
-            train_dataloader,
-            optimizer,
-            aux_optimizer,
-            epoch,
-            args.clip_max_norm,
-        )
-        loss = test_epoch(epoch, test_dataloader, net, criterion)
+        print("******************************************************")
+        print("epoch: ",epoch)
+        start = time.time()
+        #print(f"Learning rate: {optimizer.param_groups[0]['lr']}")
+        num_tainable = net.print_information()
+        if num_tainable > 0:
+            counter = train_one_epoch( net, 
+                                      criterion, 
+                                      train_dataloader, 
+                                      optimizer, 
+                                      aux_optimizer, 
+                                      epoch, 
+                                      counter,
+                                      list_quality= list_quality,
+                                      sampling_training = args.sampling_training)
+
+        print("finito il train della epoca")
+        
+        loss = valid_epoch(epoch, 
+                           valid_dataloader,
+                           criterion, 
+                           net, pr_list = [0,10])
+
+
         lr_scheduler.step(loss)
+
+
+
+        list_pr = [0,0.01,0.5,0.1,0.25,0.5,1,1.5,2,2.5,3,4,5,10]
+        mask_pol = "point-based-std"
+        bpp_t, psnr_t = test_epoch(epoch, 
+                       test_dataloader,
+                       net, 
+                       pr_list = list_pr
+                       )
 
         is_best = loss < best_loss
         best_loss = min(loss, best_loss)
 
-        if args.save:
-            save_checkpoint(
+        print("finito il test della epoca: ",bpp_t," ",psnr_t)
+
+
+        end = time.time()
+        print("Runtime of the epoch:  ", epoch)
+        sec_to_hours(end - start) 
+        print("END OF EPOCH ", epoch)
+
+
+        is_best = loss < best_loss
+        best_loss = min(loss, best_loss)
+
+        if epoch%5==0 or is_best:
+            net.update()
+            #net.lmbda_list
+            bpp, psnr,_ = compress_with_ac(net,  
+                                            filelist, 
+                                            device,
+                                           epoch = -10, 
+                                           pr_list =list_pr,  
+                                            mask_pol = mask_pol,
+                                            writing = None)
+            
+            print("COMPRESSIONE ",bpp," ",psnr)
+
+            psnr_res = {}
+            bpp_res = {}
+
+            bpp_res["our"] = bpp
+            psnr_res["our"] = psnr
+
+            psnr_res["base"] =   [29.20, 30.59,32.26,34.15,35.91,37.72]
+            bpp_res["base"] =  [0.127,0.199,0.309,0.449,0.649,0.895]
+
+
+
+            bpp_res["tri_planet_23"] = tri_planet_23_bpp
+            psnr_res["tri_planet_23"] = tri_planet_23_psnr
+
+            bpp_res["tri_planet_22"] = tri_planet_22_bpp
+            psnr_res["tri_planet_22"] = tri_planet_22_psnr
+
+            plot_rate_distorsion(bpp_res, psnr_res,epoch_enc, eest="compression")
+            
+            bpp_res["our"] = bpp_t
+            psnr_res["our"] = psnr_t          
+            
+
+
+
+            plot_rate_distorsion(bpp_res, psnr_res,epoch_enc, eest="model")
+            epoch_enc += 1
+
+
+
+        stringa_lambda = ""
+        for lamb in args.lmbda_list:
+            stringa_lambda = stringa_lambda  + "_" + str(lamb)
+
+
+        name_folder = args.code + "_" + stringa_lambda + "_"
+        cartella = os.path.join(save_path,name_folder) #dddd
+        os.makedirs(cartella, exist_ok=True)
+
+
+
+
+        last_pth, very_best =  create_savepath( cartella)
+        save_checkpoint(
                 {
                     "epoch": epoch,
                     "state_dict": net.state_dict(),
-                    "loss": loss,
                     "optimizer": optimizer.state_dict(),
-                    "aux_optimizer": aux_optimizer.state_dict(),
                     "lr_scheduler": lr_scheduler.state_dict(),
+                    "aux_optimizer":aux_optimizer.state_dict() if aux_optimizer is not None else "None",
+                    "args":args
+      
                 },
                 is_best,
-                args.save_path,
-            )
+                last_pth,
+                very_best
+                )
+
+        log_dict = {
+        "train":epoch,
+        "train/leaning_rate": optimizer.param_groups[0]['lr']
+        #"train/beta": annealing_strategy_gaussian.bet
+        }
+
+        wandb.log(log_dict)
+
+
 
 
 if __name__ == "__main__":

@@ -1,8 +1,8 @@
 import torch
 import torch.nn as nn
-from compressai.layers import GDN, conv3x3, subpel_conv3x3, Win_noShift_Attention, ChannelMask, UNet
+from compress.layers import GDN, conv3x3, subpel_conv3x3, Win_noShift_Attention, ChannelMask, UNet
 from utils import conv, deconv
-from compressai.ops import ste_round
+from compress.ops import ste_round
 from cnn import WACNN
 import math
 
@@ -452,13 +452,14 @@ class ChannelProgresssiveWACNN(WACNN):
             
             scale = self.cc_scale_transforms_prog[slice_index](scale_support)#self.extract_scale(idx,slice_index,scale_support)
             scale = scale[:, :, :y_shape[0], :y_shape[1]]
-            std_total.append(scale) if self.support_std else std_total.append(mut)
 
-
-            mu_total.append(mut)
-    
             mu_tensor.append(mu)
             std_tensor.append(scale)
+
+
+            std_total.append(scale) if self.support_std else std_total.append(mut)
+            mu_total.append(mut)
+    
 
 
         mu_tensor = torch.cat(mu_tensor,dim = 1)
@@ -994,7 +995,12 @@ class ChannelProgresssiveWACNN(WACNN):
         return {"x_hat": x_hat}   
 
 
-    def forward_single_quality(self,x, quality, mask_pol = "point-based-std", force_enhanced = False,training = False):
+    def forward_single_quality(self,
+                            x, 
+                            quality,
+                            mask_pol = "point-based-std", 
+                            force_enhanced = False,
+                            training = False):
 
         mask_pol = self.mask_policy if mask_pol is None else mask_pol
 
@@ -1038,10 +1044,6 @@ class ChannelProgresssiveWACNN(WACNN):
 
             mu_base.append(mu)
             std_base.append(scale) 
-
-            #mu_prog.append(mu) #le sommo
-            #std_prog.append(scale) #le sommo 
-
 
 
             _, y_slice_likelihood = self.gaussian_conditional(y_slice, scale, mu, training = training)
