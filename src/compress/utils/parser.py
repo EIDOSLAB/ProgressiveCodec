@@ -65,7 +65,7 @@ def parse_args(argv):
 
     parser.add_argument("--continue_training", action="store_true", help="continue training of the checkpoint")
 
-    parser.add_argument("--seed", type=float, help="Set random seed for reproducibility")
+    parser.add_argument("--seed", type=float, default = 42, help="Set random seed for reproducibility")
     parser.add_argument("--sampling_training", action="store_true", help="Save model to disk")
     parser.add_argument("--joiner_policy", type=str, default = "res",help="Path to a checkpoint") 
     parser.add_argument("--clip_max_norm",default=1.0,type=float,help="gradient clipping max norm (default: %(default)s",)
@@ -73,7 +73,7 @@ def parse_args(argv):
     parser.add_argument("--checkpoint_base", type=str, default =  "none",help="Path to a checkpoint") #"/scratch/base_devil/weights/q2/model.pth"
     parser.add_argument("--checkpoint_enh", type=str, default =  "none",help="Path to a checkpoint") #"/scratch/base_devil/weights/q5/model.pth"
     parser.add_argument("--tester", action="store_true", help="use common lrp for progressive") #dddddd
-    parser.add_argument("--support_progressive_slices",default=4,type=int,help="support_progressive_slices",) #ssss
+    parser.add_argument("--support_progressive_slices",default=5,type=int,help="support_progressive_slices",) #ssss
     args = parser.parse_args(argv)
     return args
 

@@ -181,7 +181,7 @@ def main(argv):
 
     openimages_path = "/scratch/dataset/openimages"
     kodak_path = "/scratch/dataset/kodak"
-    save_path = "/scratch/Progressive/models/"
+    save_path = "/scratch/ResDSIC/models/"
 
 
     dict_base_model = {"q2":"/scratch/base_devil/weights/q2/model.pth",

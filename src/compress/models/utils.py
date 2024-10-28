@@ -16,6 +16,78 @@ import torch
 import torch.nn as nn
 
 
+def conv3x3(in_ch: int, out_ch: int, stride: int = 1) -> nn.Module:
+    return nn.Conv2d(in_ch, out_ch, kernel_size=3, stride=stride, padding=1)
+
+
+def conv1x1(in_ch: int, out_ch: int, stride: int = 1) -> nn.Module:
+    return nn.Conv2d(in_ch, out_ch, kernel_size=1, stride=stride, padding=0)#eeee
+
+
+class ResidualBlockSmall(nn.Module):
+    def __init__(self, in_ch: int, out_ch: int):
+        super().__init__()
+        self.conv1 = conv3x3(in_ch, out_ch)
+
+  
+        self.nonlin = nn.LeakyReLU(inplace=True)
+
+        
+        #self.conv2 = conv3x3(out_ch, out_ch)
+
+        if in_ch != out_ch:
+            self.skip = conv1x1(in_ch, out_ch)
+        else:
+            self.skip = None
+
+    def forward(self, x):
+        identity = x
+
+        out = self.conv1(x)
+        out = self.nonlin(out)
+        #out = self.conv2(out)
+        #out = self.nonlin(out)
+
+        if self.skip is not None:
+            identity = self.skip(x)
+
+        out = out + identity
+        return out
+
+
+
+class ResidualBlock(nn.Module):
+    def __init__(self, in_ch: int, out_ch: int):
+        super().__init__()
+        self.conv1 = conv3x3(in_ch, out_ch)
+
+  
+        self.nonlin = nn.LeakyReLU(inplace=True)
+
+        
+        self.conv2 = conv3x3(out_ch, out_ch)
+
+        if in_ch != out_ch:
+            self.skip = conv1x1(in_ch, out_ch)
+        else:
+            self.skip = None
+
+    def forward(self, x):
+        identity = x
+
+        out = self.conv1(x)
+        out = self.nonlin(out)
+        out = self.conv2(out)
+        out = self.nonlin(out)
+
+        if self.skip is not None:
+            identity = self.skip(x)
+
+        out = out + identity
+        return out
+    
+
+
 def find_named_module(module, query):
     """Helper function to find a named module. Returns a `nn.Module` or `None`
 

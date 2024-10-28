@@ -7,7 +7,7 @@ from torch.nn.functional import mse_loss
 from pytorch_msssim import ms_ssim
 import torch.nn.functional as F 
 import torchvision.transforms as transforms
-from compress.ops import compute_padding
+from compressai.ops import compute_padding
 from compress.utils.functions import compute_msssim, compute_psnr, AverageMeter, read_image
 
 def compute_psnr(a, b):

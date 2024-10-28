@@ -2,9 +2,205 @@ import torch
 import torch.nn as nn
 from compress.ops import ste_round
 from .CHProg_cnn import ChannelProgresssiveWACNN
-
-from compress.layers  import  LatentRateReduction
+from .utils import ResidualBlock, ResidualBlockSmall
+from torch.nn import Sequential as Seq
 import time
+
+
+
+
+class LatentRateReduction(nn.Module):
+
+
+        def __init__(self, dim_chunk = 32, mu_std = False, dimension = "middle" ):
+            super().__init__()
+            self.dim_block = dim_chunk
+
+            self.mu_std = mu_std
+            N = self.dim_block
+
+
+
+            if dimension != "big": #dd
+                self.enc_base_entropy_params = Seq(
+                    ResidualBlock(2 * N ,  N),
+                    ResidualBlock( N, N),
+                    )
+                
+                self.enc_enh_entropy_params = Seq(
+                    ResidualBlock(2 * N if self.mu_std else N ,  N),
+                    ResidualBlock( N, N),
+                    )
+
+                self.enc_base_rep = Seq(
+                    ResidualBlock(N, N),
+                    ResidualBlock(N, N),
+                    )
+
+                self.enc = Seq(
+                    ResidualBlock(3 * N, 2 * N),
+                    ResidualBlock(2 * N, 2 * N),
+                    ResidualBlock(2 * N, 2 * N if self.mu_std else N),
+                )
+            else:
+                self.enc_base_entropy_params = Seq(
+                    ResidualBlock(2 * N ,  N),
+                    ResidualBlock( N, N),
+                    ResidualBlock( N, N),
+                    )
+                
+                self.enc_enh_entropy_params = Seq(
+                    ResidualBlock(2 * N if self.mu_std else N ,  N),
+                    ResidualBlock( N, N),
+                    ResidualBlock( N, N),
+                    )            
+
+                self.enc_base_rep = Seq(
+                    ResidualBlock(N, N),
+                    ResidualBlock(N, N),
+                    ResidualBlock(N, N),
+                    )   
+
+                self.enc = Seq(
+                    ResidualBlock(3 * N, 2 * N),
+                    ResidualBlock(2 * N, 2 * N),
+                    ResidualBlock(2 * N, 2 * N),
+                    ResidualBlock(2 * N, 2 * N if self.mu_std else N),
+                )           
+
+
+
+        def forward(self, x_base, entropy_params_base, entropy_params_prog, att_mask):
+
+            identity = entropy_params_prog
+
+            f_ent_prog = self.enc_enh_entropy_params(entropy_params_prog) 
+            f_latent = self.enc_base_rep(x_base)
+            f_ent_base = self.enc_base_entropy_params(entropy_params_base)            
+
+            ret = self.enc(torch.cat([f_latent, f_ent_base, f_ent_prog], dim=1)) #fff
+            ret = ret*att_mask
+            #ret = self.enc(torch.cat([f_latent, f_ent_prog], dim=1)) 
+            ret += identity
+            return ret
+
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+
+
+class MaskEstractor(nn.Module):
+
+
+    def __init__(self, N = 320, portion = "big", normalize = False):
+        super().__init__()
+        self.N = N
+        self.portion = portion
+        self.normalize = normalize
+
+
+
+
+        self.enc_base_entropy_params = Seq( ResidualBlock(2 * N,  N),ResidualBlock( N,  N) )
+            
+        self.enc_p0_entropy_params = Seq(
+                 ResidualBlock(2 *N,  N),
+                 ResidualBlock(N,  N),
+                )
+
+        self.enc_base_rep = Seq(
+                 ResidualBlock(N,N),
+                 ResidualBlock(N,N)
+                
+                )
+            
+        self.enc_p0_rep = Seq(
+                ResidualBlock(N,N),
+                ResidualBlock(N,N)
+                
+                )
+            
+
+        
+        if self.portion == "small":
+            self.enc = Seq(
+                ResidualBlockSmall(4 * N,2*N),
+                ResidualBlockSmall(2 * N,  N)
+
+            )
+        else: 
+            self.enc = Seq(
+                ResidualBlock(4 * N,2*N),
+                ResidualBlock(2 * N,  N)
+
+            )           
+
+
+    def extract_map(self,x,net):
+
+        out_base = net.forward_single_quality(x, 
+                                                  quality = 0, 
+                                                  training = False, 
+                                                  force_enhanced = False,
+                                                  mask_pol = "point-based-std")
+        
+        out_p0 = net.forward_single_quality(x, 
+                                                  quality = 0.001, 
+                                                  training = False, 
+                                                  force_enhanced = True,
+                                                  mask_pol = "point-based-std")
+        
+
+        y_hat_b = out_base["y_hat"]
+        mu_b = out_base["mu"]
+        std_b = out_base["std"]
+
+        y_hat_p0 = out_p0["y_hat"]
+        mu_p0 = out_p0["mu"]
+        std_p0 = out_p0["std"]
+
+
+        params_b = torch.cat([mu_b,std_b],dim = 1)
+        params_p0 = torch.cat([mu_p0,std_p0],dim = 1)
+
+
+        mask = self.forward(y_hat_b,y_hat_p0,params_b,params_p0)
+        return mask
+
+
+
+    def forward(self, y_base, y_p0, entropy_params_base, entropy_params_p0):
+
+        f_latent_b = self.enc_base_rep(y_base)
+        f_latent_p0 = self.enc_p0_rep(y_p0)
+        f_ent_base = self.enc_base_entropy_params(entropy_params_base)
+        f_ent_prog = self.enc_p0_entropy_params(entropy_params_p0) 
+        ret = self.enc(torch.cat([f_latent_b,f_latent_p0, f_ent_base, f_ent_prog], dim=1))
+
+        if self.normalize:
+            ret = torch.sigmoid(ret) 
+
+        #ret = (ret - ret.min()) / (ret.max() - ret.min())
+        return ret
+        
+
+    def print_information(self):
+
+        print("self.enc_base_rep",sum(p.numel() for p in self.enc_base_rep.parameters()))
+        print("self.enc_enh_rep",sum(p.numel() for p in self.enc_p0_rep.parameters()))  
+        print("self.enc_base_rep",sum(p.numel() for p in self.enc_base_entropy_params.parameters()))  
+        print("self.enc_enh_entropy_params",sum(p.numel() for p in self.enc_p0_entropy_params.parameters()))    
+        print("self.enc",sum(p.numel() for p in self.enc.parameters())) 
+        print("**************************************************************************")
+        model_tr_parameters = sum(p.numel() for p in self.parameters() if p.requires_grad)
+        model_fr_parameters = sum(p.numel() for p in self.parameters() if p.requires_grad== False)
+        print(" trainable parameters: ",model_tr_parameters)
+        print(" freeze parameterss: ", model_fr_parameters)
+        return model_tr_parameters
+    
+
 
 class PostRateProcessedNetwork(nn.Module):
 

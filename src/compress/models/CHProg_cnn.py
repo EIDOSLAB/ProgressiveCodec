@@ -1,9 +1,12 @@
 import torch
 import torch.nn as nn
 from compress.layers import GDN, conv3x3, subpel_conv3x3, Win_noShift_Attention, ChannelMask, UNet
-from utils import conv, deconv
+from .utils import conv, deconv
+
+
+
 from compress.ops import ste_round
-from cnn import WACNN
+from .cnn import WACNN
 import math
 
 
