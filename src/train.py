@@ -189,7 +189,7 @@ def main(argv):
 
     
  
-    wandb.init( config= args, project="ProgressiveCodec", entity="albipresta") #ddd
+    wandb.init( config= args, project="ProgressiveCodec", entity="alberto-presta") #ddd
 
     if args.seed is not None:
         torch.manual_seed(args.seed)

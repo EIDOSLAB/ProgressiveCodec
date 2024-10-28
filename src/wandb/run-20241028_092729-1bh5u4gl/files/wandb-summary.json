@@ -1,0 +1,1 @@
+{"train_batch": 64, "train_batch/loss": 34.92515182495117, "train_batch/bpp_total": 2.376408338546753, "train_batch/mse": 0.027707938104867935, "_runtime": 60, "_timestamp": 1730107709, "_step": 129, "train_batch/bpp_progressive": 1.3611304759979248}

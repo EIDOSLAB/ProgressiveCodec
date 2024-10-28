@@ -23,10 +23,13 @@ def get_scale_table(min=SCALES_MIN, max=SCALES_MAX, levels=SCALES_LEVELS):
 class WACNN(CompressionModel):
     """CNN based model"""
 
-    def __init__(self, N=192, M=320, **kwargs):
+    def __init__(self, N=192, M=320, dim_chunk = 32, **kwargs):
         super().__init__(**kwargs)
-        self.num_slices = 10
+        self.dim_chunk = dim_chunk
+        self.num_slices = M//self.dim_chunk
         self.max_support_slices = 5
+        self.N = N 
+        self.M = M
 
         self.g_a = nn.Sequential(
             conv(3, N, kernel_size=5, stride=2),
@@ -52,7 +55,7 @@ class WACNN(CompressionModel):
         )
 
         self.h_a = nn.Sequential(
-            conv3x3(320, 320),
+            conv3x3(M, 320),
             nn.GELU(),
             conv3x3(320, 288),
             nn.GELU(),
@@ -60,11 +63,11 @@ class WACNN(CompressionModel):
             nn.GELU(),
             conv3x3(256, 224),
             nn.GELU(),
-            conv3x3(224, 192, stride=2),
+            conv3x3(224, self.N, stride=2),
         )
 
         self.h_mean_s = nn.Sequential(
-            conv3x3(192, 192),
+            conv3x3(self.N, 192),
             nn.GELU(),
             subpel_conv3x3(192, 224, 2),
             nn.GELU(),
@@ -72,11 +75,11 @@ class WACNN(CompressionModel):
             nn.GELU(),
             subpel_conv3x3(256, 288, 2),
             nn.GELU(),
-            conv3x3(288, 320),
+            conv3x3(288, self.M),
         )
 
         self.h_scale_s = nn.Sequential(
-            conv3x3(192, 192),
+            conv3x3(self.N, 192),
             nn.GELU(),
             subpel_conv3x3(192, 224, 2),
             nn.GELU(),
@@ -84,7 +87,7 @@ class WACNN(CompressionModel):
             nn.GELU(),
             subpel_conv3x3(256, 288, 2),
             nn.GELU(),
-            conv3x3(288, 320),
+            conv3x3(288, self.M),
         )
         self.cc_mean_transforms = nn.ModuleList(
             nn.Sequential(
@@ -97,7 +100,7 @@ class WACNN(CompressionModel):
                 conv(128, 64, stride=1, kernel_size=3),
                 nn.GELU(),
                 conv(64, 32, stride=1, kernel_size=3),
-            ) for i in range(10)
+            ) for i in range(self.num_slices)
         )
         self.cc_scale_transforms = nn.ModuleList(
             nn.Sequential(
@@ -110,7 +113,7 @@ class WACNN(CompressionModel):
                 conv(128, 64, stride=1, kernel_size=3),
                 nn.GELU(),
                 conv(64, 32, stride=1, kernel_size=3),
-            ) for i in range(10)
+            ) for i in range(self.num_slices)
             )
         self.lrp_transforms = nn.ModuleList(
             nn.Sequential(
@@ -123,8 +126,9 @@ class WACNN(CompressionModel):
                 conv(128, 64, stride=1, kernel_size=3),
                 nn.GELU(),
                 conv(64, 32, stride=1, kernel_size=3),
-            ) for i in range(10)
+            ) for i in range(self.num_slices)
         )
+
 
         self.entropy_bottleneck = EntropyBottleneck(N)
         self.gaussian_conditional = GaussianConditional(None)

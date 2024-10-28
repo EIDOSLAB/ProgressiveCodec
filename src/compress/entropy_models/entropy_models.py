@@ -21,7 +21,7 @@ class _EntropyCoder:
         if not isinstance(method, str):
             raise ValueError(f'Invalid method type "{type(method)}"')
 
-        from compress import available_entropy_coders
+        from compressai import available_entropy_coders
 
         if method not in available_entropy_coders():
             methods = ", ".join(available_entropy_coders())
@@ -30,7 +30,7 @@ class _EntropyCoder:
             )
 
         if method == "ans":
-            from compress import ans
+            from compressai import ans
 
             encoder = ans.RansEncoder()
             decoder = ans.RansDecoder()

@@ -203,6 +203,7 @@ class ChannelProgresssiveWACNN(WACNN):
             )  
 
         if self.multiple_hyperprior:
+            print("decide to put multple hyperprior")
 
             self.h_mean_s = nn.ModuleList(
                 nn.Sequential(

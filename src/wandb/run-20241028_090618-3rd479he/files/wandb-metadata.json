@@ -1,0 +1,34 @@
+{
+    "os": "Linux-5.4.0-172-generic-x86_64-with-debian-buster-sid",
+    "python": "3.7.11",
+    "heartbeatAt": "2024-10-28T09:06:20.486779",
+    "startedAt": "2024-10-28T09:06:18.998106",
+    "docker": null,
+    "gpu": "NVIDIA A40",
+    "gpu_count": 1,
+    "cpu_count": 96,
+    "cuda": null,
+    "args": [
+        "--seed",
+        "42",
+        "--multiple_decoder",
+        "--multiple_hyperprior",
+        "--delta_encode",
+        "--code",
+        "mdmh-mem5-de",
+        "--num_images",
+        "1200"
+    ],
+    "state": "running",
+    "program": "train.py",
+    "codePath": "src/train.py",
+    "git": {
+        "remote": "git@github.com:EIDOSLAB/ProgressiveCodec.git",
+        "commit": "73ffc886503261a11458ccacc4aa442a86f7c66a"
+    },
+    "email": "presta.alberto@libero.it",
+    "root": "/scratch/ProgressiveCodec",
+    "host": "dev-hssh1",
+    "username": "presta",
+    "executable": "/opt/conda/bin/python3"
+}
